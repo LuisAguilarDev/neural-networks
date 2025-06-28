@@ -5,9 +5,13 @@ import numpy as np # linear algebra
 import struct
 from array import array
 from os.path  import join
-
+import torch
+from torch.utils.data import TensorDataset, DataLoader
+import torch.nn as nn
+import torch.nn.functional as F
 import random
 import matplotlib.pyplot as plt
+import torch.optim as optim
 #
 # MNIST Data Loader Class
 #
@@ -74,7 +78,8 @@ def show_images(images, title_texts):
         if (title_text != ''):
             plt.title(title_text, fontsize = 15);        
         index += 1
-    plt.show()
+    # if we want to see the images
+    # plt.show()
 
 #
 # Load MINST dataset
@@ -98,3 +103,72 @@ for i in range(0, 5):
     titles_2_show.append('test image [' + str(r) + '] = ' + str(y_test[r]))    
 
 show_images(images_2_show, titles_2_show)
+
+
+### 2 train!
+
+# Convertir las listas a tensores de PyTorch
+x_train_tensor = torch.tensor(np.array(x_train), dtype=torch.float32) / 255.0
+y_train_tensor = torch.tensor(np.array(y_train), dtype=torch.long)
+
+x_test_tensor = torch.tensor(np.array(x_test), dtype=torch.float32) / 255.0
+y_test_tensor = torch.tensor(np.array(y_test), dtype=torch.long)
+
+# Añadir canal para convoluciones (N, C, H, W), en este caso C=1 (escala de grises)
+x_train_tensor = x_train_tensor.unsqueeze(1)
+x_test_tensor = x_test_tensor.unsqueeze(1)
+
+# Crear DataLoader para entrenar por lotes
+train_dataset = TensorDataset(x_train_tensor, y_train_tensor)
+test_dataset = TensorDataset(x_test_tensor, y_test_tensor)
+
+train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
+test_loader = DataLoader(test_dataset, batch_size=64)
+
+# Crear una red neuronal simple
+class Net(nn.Module):
+    def __init__(self):
+        super(Net, self).__init__()
+        self.fc1 = nn.Linear(28 * 28, 128)
+        self.fc2 = nn.Linear(128, 64)
+        self.fc3 = nn.Linear(64, 10)
+    
+    def forward(self, x):
+        x = x.view(-1, 28 * 28)  # Aplana la imagen
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        return self.fc3(x)
+
+model = Net()
+
+# Definir optimizador y función de pérdida
+criterion = nn.CrossEntropyLoss()
+optimizer = optim.Adam(model.parameters(), lr=0.001)
+
+# Entrenamiento del modelo
+for epoch in range(10):  # 6 épocas
+    model.train()
+    running_loss = 0.0
+    for inputs, labels in train_loader:
+        optimizer.zero_grad()
+        outputs = model(inputs)
+        loss = criterion(outputs, labels)
+        loss.backward()
+        optimizer.step()
+        running_loss += loss.item()
+    print(f"Epoch {epoch+1}, Loss: {running_loss:.4f}")
+
+# Evaluar el modelo
+correct = 0
+total = 0
+model.eval()
+with torch.no_grad():
+    for inputs, labels in test_loader:
+        outputs = model(inputs)
+        _, predicted = torch.max(outputs.data, 1)
+        total += labels.size(0)
+        correct += (predicted == labels).sum().item()
+
+print(f"Accuracy on test set: {100 * correct / total:.2f}%")
+
+# over fitting (investigate)
